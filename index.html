@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Attendance</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PapaParse for CSV Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal {
+            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+        }
+        /* Scrollbar styles for profile nav */
+        .profile-nav::-webkit-scrollbar {
+            height: 4px;
+        }
+        .profile-nav::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .profile-nav::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 2px;
+        }
+        .profile-nav::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 md:p-8 max-w-4xl">
+        
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-start">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Employee Attendance Portal</h1>
+                <p class="text-gray-600 mt-1">Welcome! Select a profile from the list below to begin.</p>
+            </div>
+            <div class="flex flex-col items-end space-y-2">
+                 <button id="admin-login-btn" class="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg transition duration-300 w-full">Admin Login</button>
+            </div>
+        </header>
+
+        <!-- Loading Spinner -->
+        <div id="loader" class="text-center py-10">
+            <svg class="animate-spin h-8 w-8 text-indigo-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2 text-gray-500">Loading Application...</p>
+        </div>
+
+        <!-- Error Display -->
+        <div id="error-display" class="hidden text-center py-10 px-4">
+            <h2 class="text-2xl font-bold text-red-600">Application Error</h2>
+            <p class="text-gray-700 mt-2">Could not connect to the database. This is usually due to a configuration issue.</p>
+            <div class="mt-4 text-left bg-red-50 p-4 rounded-lg border border-red-200">
+                <p class="font-semibold">Please check the following in your Firebase project settings:</p>
+                <ol class="list-decimal list-inside mt-2 space-y-1 text-sm">
+                    <li>Go to <strong>Authentication -> Sign-in method</strong> and ensure <strong>Anonymous</strong> and <strong>Email/Password</strong> sign-in are enabled.</li>
+                    <li>Go to <strong>Authentication -> Settings -> Authorized domains</strong> and add your GitHub Pages domain (e.g., `your-username.github.io`).</li>
+                    <li>Double-check that the `firebaseConfig` object in the code exactly matches the one from your Firebase project.</li>
+                </ol>
+            </div>
+            <p id="error-message" class="text-xs text-gray-500 mt-4"></p>
+        </div>
+
+        <!-- Main Content (hidden until loaded) -->
+        <main id="main-content" class="hidden space-y-8">
+            
+            <!-- Profiles Navigation -->
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h3 class="text-lg font-bold mb-3 text-gray-800">Select Profile:</h3>
+                <div id="profile-nav-container" class="profile-nav flex items-center space-x-3 overflow-x-auto pb-2">
+                    <p id="no-profiles-message" class="text-gray-500">No profiles created yet.</p>
+                </div>
+                <button id="add-new-profile-btn" class="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-semibold">+ Add New Profile</button>
+            </div>
+
+            <!-- Active Profile Display -->
+            <div id="active-profile-section" class="bg-white p-6 rounded-lg shadow-md flex-col md:flex-row justify-between items-start md:items-center hidden">
+                <div id="profile-display" class="mb-4 md:mb-0 grid grid-cols-2 gap-x-4 gap-y-2 flex-grow">
+                    <p class="col-span-2 text-lg font-semibold">Active Profile: <span id="profile-name" class="text-indigo-600">No Profile Selected</span></p>
+                    <p class="text-sm text-gray-500">Employee ID:</p><p class="text-sm font-medium" id="profile-eid">N/A</p>
+                    <p class="text-sm text-gray-500">Department:</p><p class="text-sm font-medium" id="profile-department">N/A</p>
+                    <p class="text-sm text-gray-500">Position:</p><p class="text-sm font-medium" id="profile-position">N/A</p>
+                    <p class="col-span-2 text-xs text-gray-400 mt-2">Data User ID: <span id="user-id-display"></span></p>
+                </div>
+                <div class="flex space-x-2 mt-4 md:mt-0">
+                    <button id="edit-active-profile-btn" class="bg-gray-200 text-xs p-2 rounded">Edit</button>
+                    <button id="change-employee-password-btn" class="hidden bg-yellow-500 text-white text-xs p-2 rounded">Change Password</button>
+                    <button id="delete-active-profile-btn" class="bg-red-500 text-white text-xs p-2 rounded">Delete</button>
+                </div>
+            </div>
+
+            <!-- Attendance Section -->
+            <div id="attendance-section" class="bg-white p-6 rounded-lg shadow-md hidden">
+                <div id="attendance-marked-message" class="hidden">
+                     <h2 class="text-2xl font-bold mb-2">Attendance Status</h2>
+                     <p id="attendance-marked-text" class="text-green-600"></p>
+                </div>
+                <div id="attendance-form-container">
+                    <h2 class="text-2xl font-bold mb-2">Mark Today's Attendance</h2>
+                    <p class="text-gray-600 mb-4">Today is: <span id="current-date" class="font-semibold"></span></p>
+                    <div id="attendance-form">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">1. Add Today's Work Links</label>
+                        <div id="work-links-container" class="space-y-3"></div>
+                        <button type="button" id="add-link-btn" class="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-semibold">+ Add another link</button>
+                    </div>
+                    <div id="message-area" class="my-4 p-3 rounded-md text-sm hidden"></div>
+                    <div class="flex space-x-4 mt-4">
+                        <button id="mark-attendance-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            Mark as Present
+                        </button>
+                         <button id="request-leave-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out">
+                            Request Leave
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance History -->
+            <div id="history-section" class="bg-white p-6 rounded-lg shadow-md hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold">Attendance History for <span id="history-profile-name" class="text-indigo-600">...</span></h2>
+                    <button id="download-sheet-btn" class="hidden bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Download Sheet (CSV)</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendance-history-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- All Modals -->
+    <!-- Add/Edit Profile Form Modal -->
+    <div id="profile-form-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="modal bg-white rounded-lg shadow-xl w-full max-w-md mx-auto z-10 transform scale-95 opacity-0">
+             <div class="p-6">
+                <h3 id="profile-form-title" class="text-2xl font-bold mb-4">Add New Profile</h3>
+                <form id="profile-form" class="space-y-4">
+                    <input type="hidden" id="profile-id" />
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                        <input type="text" id="name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="employeeId" class="block text-sm font-medium text-gray-700">Employee ID</label>
+                        <input type="text" id="employeeId" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="department" class="block text-sm font-medium text-gray-700">Department</label>
+                        <input type="text" id="department" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label for="position" class="block text-sm font-medium text-gray-700">Position</label>
+                        <input type="text" id="position" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label for="profile-password-input" class="block text-sm font-medium text-gray-700">Profile Password</label>
+                        <input type="password" id="profile-password-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Required for new profiles">
+                    </div>
+                    <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Profile</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div id="admin-login-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="modal bg-white rounded-lg shadow-xl w-full max-w-sm mx-auto z-10 transform scale-95 opacity-0">
+            <div class="p-6">
+                <h3 class="text-xl font-bold mb-4">Admin Login</h3>
+                <form id="admin-login-form" class="space-y-4">
+                    <input type="email" id="admin-email" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Email" required>
+                    <input type="password" id="admin-password" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Password" required>
+                    <div id="admin-login-error" class="text-red-500 text-sm hidden"></div>
+                    <div class="flex justify-end space-x-4 mt-6">
+                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Login</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Password Modal -->
+    <div id="profile-password-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="modal bg-white rounded-lg shadow-xl w-full max-w-sm mx-auto z-10 transform scale-95 opacity-0">
+            <div class="p-6">
+                <h3 id="profile-password-title" class="text-xl font-bold mb-4">Enter Password</h3>
+                <form id="profile-password-form">
+                    <input type="password" id="profile-password-check" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    <div id="profile-password-error" class="text-red-500 text-sm mt-2 hidden">Incorrect password.</div>
+                    <div class="flex justify-end space-x-4 mt-6">
+                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Unlock</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Employee Password Modal -->
+    <div id="change-employee-password-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="modal bg-white rounded-lg shadow-xl w-full max-w-md mx-auto z-10 transform scale-95 opacity-0">
+            <div class="p-6">
+                <h3 id="change-employee-password-title" class="text-2xl font-bold mb-4">Change Employee Password</h3>
+                <form id="change-employee-password-form" class="space-y-4">
+                    <input type="password" id="new-employee-password" class="mt-1 block w-full px-3 py-2 border rounded-md" placeholder="New Password" required>
+                    <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Update Password</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leave Request Modal -->
+    <div id="leave-request-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="modal bg-white rounded-lg shadow-xl w-full max-w-md mx-auto z-10 transform scale-95 opacity-0">
+            <div class="p-6">
+                <h3 class="text-2xl font-bold mb-4">Request Leave</h3>
+                <form id="leave-request-form" class="space-y-4">
+                    <textarea id="leave-reason" class="w-full h-24 p-2 border rounded-md" placeholder="Please provide a reason for your leave..." required></textarea>
+                     <div class="flex justify-end space-x-4 pt-4">
+                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Submit Request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-analytics.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+        import { getFirestore, doc, getDoc, getDocs, setDoc, onSnapshot, collection, serverTimestamp, query, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCwtjfkj3zAMiAiSfRjHnfLkDGy6xs9Viw",
+            authDomain: "attendance-cc645.firebaseapp.com",
+            projectId: "attendance-cc645",
+            storageBucket: "attendance-cc645.appspot.com",
+            messagingSenderId: "57692680364",
+            appId: "1:57692680364:web:7020316cc7f3775ebf6f09",
+            measurementId: "G-CDPTB6XM6L"
+        };
+
+        const appId = firebaseConfig.projectId; // Use project ID for consistency
+        
+        let app, auth, db, dataUserId;
+        let isAuthReady = false;
+        let allProfiles = [];
+        let activeProfile = null;
+        let profileToUnlockId = null;
+        let isAdminLoggedIn = false;
+
+        const $ = (selector) => document.querySelector(selector);
+        const $$ = (selector) => document.querySelectorAll(selector);
+
+        const loader = $('#loader');
+        const mainContent = $('#main-content');
+        const adminLoginBtn = $('#admin-login-btn');
+
+        const getTodayDateString = () => new Date().toISOString().split('T')[0];
+        const formatDisplayDate = (date) => new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const formatTimestamp = (ts) => ts ? ts.toDate().toLocaleTimeString('en-US') : 'N/A';
+
+        const toggleModal = (modalId, show) => {
+            const modal = $(`#${modalId}`);
+            if (!modal) return;
+            const modalContent = modal.querySelector('.modal');
+            if (show) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modalContent.classList.remove('scale-95', 'opacity-0'), 10);
+            } else {
+                modalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+            }
+        };
+
+        const updateAdminUI = () => {
+            if (isAdminLoggedIn) {
+                adminLoginBtn.textContent = 'Admin Logout';
+                adminLoginBtn.classList.replace('bg-gray-700', 'bg-red-600');
+                adminLoginBtn.classList.replace('hover:bg-gray-800', 'hover:bg-red-700');
+                $('#download-sheet-btn').classList.remove('hidden');
+                $('#change-employee-password-btn').classList.remove('hidden');
+            } else {
+                adminLoginBtn.textContent = 'Admin Login';
+                adminLoginBtn.classList.replace('bg-red-600', 'bg-gray-700');
+                adminLoginBtn.classList.replace('hover:bg-red-700', 'hover:bg-gray-800');
+                $('#download-sheet-btn').classList.add('hidden');
+                $('#change-employee-password-btn').classList.add('hidden');
+            }
+            renderProfileNav();
+            if(activeProfile) setupAttendanceListener();
+        };
+
+        const updateActiveProfileUI = () => {
+            const activeProfileSection = $('#active-profile-section');
+            if (activeProfile) {
+                $('#profile-name').textContent = activeProfile.name || 'Unnamed Profile';
+                $('#profile-eid').textContent = activeProfile.employeeId || 'N/A';
+                $('#profile-department').textContent = activeProfile.department || 'N/A';
+                $('#profile-position').textContent = activeProfile.position || 'N/A';
+                $('#history-profile-name').textContent = activeProfile.name || '...';
+                $('#user-id-display').textContent = dataUserId || '...';
+                activeProfileSection.classList.remove('hidden');
+                $('#attendance-section').classList.remove('hidden');
+                $('#history-section').classList.remove('hidden');
+            } else {
+                activeProfileSection.classList.add('hidden');
+                $('#attendance-section').classList.add('hidden');
+                $('#history-section').classList.add('hidden');
+            }
+        };
+
+        const renderProfileNav = () => {
+            const container = $('#profile-nav-container');
+            container.innerHTML = '';
+            if (allProfiles.length > 0) {
+                $('#no-profiles-message')?.remove();
+                allProfiles.forEach(p => {
+                    const isActive = activeProfile && p.id === activeProfile.id;
+                    const button = document.createElement('button');
+                    button.dataset.id = p.id;
+                    button.textContent = p.name;
+                    button.className = `select-profile-btn flex-shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`;
+                    container.appendChild(button);
+                });
+            } else {
+                 if(!$('#no-profiles-message')) {
+                    const p = document.createElement('p');
+                    p.id = 'no-profiles-message';
+                    p.className = 'text-gray-500';
+                    p.textContent = 'No profiles created yet.';
+                    container.appendChild(p);
+                 }
+            }
+        };
+        
+        const updateAttendanceUI = (records) => {
+            const todayString = getTodayDateString();
+            const todayRecord = records.find(r => r.date === todayString);
+
+            if (todayRecord) {
+                let statusText = '';
+                if(todayRecord.status === 'Present') {
+                    statusText = `Marked as Present today at ${formatTimestamp(todayRecord.timestamp)}.`;
+                } else if (todayRecord.status === 'On Leave') {
+                    statusText = `You are on leave today. Reason: ${todayRecord.reason}`;
+                }
+                $('#attendance-marked-text').textContent = statusText;
+                $('#attendance-marked-message').classList.remove('hidden');
+                $('#attendance-form-container').classList.add('hidden');
+            } else {
+                $('#attendance-marked-message').classList.add('hidden');
+                $('#attendance-form-container').classList.remove('hidden');
+                checkCanMarkAttendance();
+            }
+
+            const historyBody = $('#attendance-history-body');
+            historyBody.innerHTML = '';
+            
+            const allHistory = generateFullHistory(records);
+
+            if (allHistory.length > 0) {
+                allHistory.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(record => {
+                    let detailsHtml = '';
+                    let statusClass = '';
+                    
+                    switch(record.status) {
+                        case 'Present':
+                            statusClass = 'bg-green-100 text-green-800';
+                            detailsHtml = (isAdminLoggedIn && record.workLinks && record.workLinks.length > 0)
+                                ? record.workLinks.map((link, i) => `<a href="${link}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-900 underline block truncate">Link ${i + 1}</a>`).join('')
+                                : 'Protected';
+                            break;
+                        case 'On Leave':
+                             statusClass = 'bg-blue-100 text-blue-800';
+                             detailsHtml = `Reason: ${record.reason}`;
+                             break;
+                        case 'Absent':
+                             statusClass = 'bg-red-100 text-red-800';
+                             detailsHtml = 'N/A';
+                             break;
+                    }
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formatDisplayDate(record.date)}</td>
+                        <td class="px-6 py-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">${record.status}</span></td>
+                        <td class="px-6 py-4 text-sm text-gray-500">${detailsHtml}</td>`;
+                    historyBody.appendChild(row);
+                });
+            } else {
+                historyBody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-gray-500">No attendance history for this profile.</td></tr>';
+            }
+        };
+
+        const generateFullHistory = (records) => {
+            if (records.length === 0) return [];
+            
+            const recordsByDate = new Map(records.map(r => [r.date, r]));
+            const fullHistory = [];
+            
+            let firstDate = new Date(records.reduce((min, r) => r.date < min ? r.date : min, records[0].date));
+            let today = new Date(getTodayDateString());
+
+            for (let d = firstDate; d <= today; d.setDate(d.getDate() + 1)) {
+                const dateString = d.toISOString().split('T')[0];
+                if (recordsByDate.has(dateString)) {
+                    fullHistory.push(recordsByDate.get(dateString));
+                } else {
+                    fullHistory.push({ date: dateString, status: 'Absent' });
+                }
+            }
+            return fullHistory;
+        };
+
+        const checkCanMarkAttendance = () => {
+            if (!activeProfile) {
+                $('#mark-attendance-btn').disabled = true;
+                return;
+            }
+            const hasValue = Array.from($$('#work-links-container input')).some(input => input.value.trim() !== '');
+            $('#mark-attendance-btn').disabled = !hasValue;
+        };
+
+        const addLinkInput = () => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center space-x-2';
+            div.innerHTML = `<input type="url" class="flex-grow block w-full px-3 py-2 bg-white border border-gray-300 rounded-md" placeholder="https://docs.google.com/..." required><button type="button" class="remove-link-btn text-red-500 hover:text-red-700 font-semibold">Remove</button>`;
+            $('#work-links-container').appendChild(div);
+            div.querySelector('input').addEventListener('input', checkCanMarkAttendance);
+        };
+
+        const setupFirestoreListeners = () => {
+            if (!isAuthReady || !dataUserId) return;
+
+            const profilesColRef = collection(db, `artifacts/${appId}/users/${dataUserId}/profiles`);
+            onSnapshot(query(profilesColRef), (snapshot) => {
+                allProfiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (activeProfile && !allProfiles.some(p => p.id === activeProfile.id)) {
+                    setActiveProfile(null);
+                }
+                renderProfileNav();
+            });
+        };
+
+        const setActiveProfile = async (profile) => {
+            activeProfile = profile;
+            updateActiveProfileUI();
+            renderProfileNav();
+            setupAttendanceListener();
+        };
+
+        const setupAttendanceListener = () => {
+            const workLinksContainer = $('#work-links-container');
+            workLinksContainer.innerHTML = '';
+            addLinkInput();
+            $('#message-area').classList.add('hidden');
+
+            if (!activeProfile) {
+                updateAttendanceUI([]);
+                checkCanMarkAttendance();
+                return;
+            }
+            const attendanceColRef = collection(db, `artifacts/${appId}/users/${dataUserId}/profiles/${activeProfile.id}/attendance`);
+            onSnapshot(query(attendanceColRef), (snapshot) => {
+                const records = snapshot.docs.map(d => ({ date: d.id, ...d.data() }));
+                updateAttendanceUI(records);
+            });
+        };
+
+        const handleSaveProfile = async (event) => {
+            event.preventDefault();
+            const profileId = $('#profile-id').value || crypto.randomUUID();
+            const isNewProfile = !$('#profile-id').value;
+            const password = $('#profile-password-input').value;
+
+            if (isNewProfile && !password) return alert("Password is required for new profiles.");
+
+            const profileData = {
+                name: $('#name').value.trim(),
+                employeeId: $('#employeeId').value.trim(),
+                department: $('#department').value.trim(),
+                position: $('#position').value.trim(),
+            };
+
+            if (password) profileData.password = password;
+            if (!profileData.name || !profileData.employeeId) return alert("Full Name and Employee ID are required.");
+
+            const profileRef = doc(db, `artifacts/${appId}/users/${dataUserId}/profiles`, profileId);
+            const existingData = allProfiles.find(p => p.id === profileId) || {};
+            await setDoc(profileRef, { ...existingData, ...profileData });
+            
+            toggleModal('profile-form-modal', false);
+        };
+
+        const handleDeleteProfile = async (profileIdToDelete) => {
+            if (!profileIdToDelete) return;
+            const attendanceColRef = collection(db, `artifacts/${appId}/users/${dataUserId}/profiles/${profileIdToDelete}/attendance`);
+            const attendanceSnapshot = await getDocs(attendanceColRef);
+            const batch = writeBatch(db);
+            attendanceSnapshot.forEach(doc => batch.delete(doc.ref));
+            const profileRef = doc(db, `artifacts/${appId}/users/${dataUserId}/profiles`, profileIdToDelete);
+            batch.delete(profileRef);
+            await batch.commit();
+
+            if (activeProfile && activeProfile.id === profileIdToDelete) {
+                setActiveProfile(null);
+            }
+        };
+
+        const handleMarkAttendance = async () => {
+            if (!activeProfile) return;
+            const workLinks = Array.from($$('#work-links-container input')).map(i => i.value.trim()).filter(Boolean);
+            if (workLinks.length === 0) return alert("Please provide at least one valid work link.");
+
+            $('#mark-attendance-btn').disabled = true;
+            $('#mark-attendance-btn').textContent = 'Saving...';
+            const attendanceRef = doc(db, `artifacts/${appId}/users/${dataUserId}/profiles/${activeProfile.id}/attendance`, getTodayDateString());
+            await setDoc(attendanceRef, { status: 'Present', timestamp: serverTimestamp(), workLinks });
+        };
+        
+        const handleLeaveRequest = async (event) => {
+            event.preventDefault();
+            if(!activeProfile) return;
+            const reason = $('#leave-reason').value.trim();
+            if(!reason) return alert("Reason for leave is required.");
+
+            const attendanceRef = doc(db, `artifacts/${appId}/users/${dataUserId}/profiles/${activeProfile.id}/attendance`, getTodayDateString());
+            await setDoc(attendanceRef, { status: 'On Leave', reason: reason, timestamp: serverTimestamp() });
+            toggleModal('leave-request-modal', false);
+        };
+
+        const downloadCSV = async () => {
+            if (!activeProfile) return alert("Please select a profile to download history.");
+            const attendanceColRef = collection(db, `artifacts/${appId}/users/${dataUserId}/profiles/${activeProfile.id}/attendance`);
+            const snapshot = await getDocs(query(attendanceColRef));
+            const records = snapshot.docs.map(d => ({ date: d.id, ...d.data() }));
+            const fullHistory = generateFullHistory(records);
+
+            const data = fullHistory.map(record => {
+                let details;
+                switch(record.status) {
+                    case 'Present': details = (record.workLinks || []).join(', '); break;
+                    case 'On Leave': details = `Reason: ${record.reason}`; break;
+                    default: details = 'N/A';
+                }
+                return { Date: record.date, Status: record.status, Details: details };
+            });
+
+            if(data.length === 0) return alert("No attendance history to download.");
+            const csv = Papa.unparse(data);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `${activeProfile.name}_attendance_history.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        const main = async () => {
+            try {
+                app = initializeApp(firebaseConfig);
+                const analytics = getAnalytics(app);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                await setPersistence(auth, browserLocalPersistence);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        if (user.isAnonymous) {
+                            if (!dataUserId) {
+                                // This is the first anonymous user, their ID will be used for all data.
+                                dataUserId = user.uid;
+                                isAuthReady = true;
+                                setupFirestoreListeners();
+                                loader.classList.add('hidden');
+                                mainContent.classList.remove('hidden');
+                            }
+                            isAdminLoggedIn = false;
+                        } else {
+                            // This is an admin user.
+                            isAdminLoggedIn = true;
+                        }
+                        updateAdminUI();
+                    } else {
+                        // No user is signed in at all, sign in anonymously.
+                        signInAnonymously(auth).catch((error) => {
+                            console.error("Anonymous sign-in failed:", error);
+                            loader.classList.add('hidden');
+                            $('#error-display').classList.remove('hidden');
+                            $('#error-message').textContent = `Details: ${error.message}`;
+                        });
+                    }
+                });
+            } catch (error) {
+                console.error("Initialization Error:", error);
+                loader.classList.add('hidden');
+                $('#error-display').classList.remove('hidden');
+                $('#error-message').textContent = `Details: ${error.message}`;
+            }
+        };
+
+        // --- Event Listeners ---
+        window.addEventListener('load', () => {
+            $('#current-date').textContent = formatDisplayDate(new Date());
+
+            adminLoginBtn.addEventListener('click', () => {
+                if (isAdminLoggedIn) {
+                    signOut(auth); // This will trigger onAuthStateChanged to sign in anonymously again
+                } else {
+                    toggleModal('admin-login-modal', true);
+                }
+            });
+            
+            $('#add-new-profile-btn').addEventListener('click', () => {
+                if (isAdminLoggedIn) {
+                    $('#profile-form').reset();
+                    $('#profile-id').value = '';
+                    $('#profile-password-input').placeholder = 'Required for new profiles';
+                    $('#profile-form-title').textContent = 'Add New Profile';
+                    toggleModal('profile-form-modal', true);
+                } else {
+                    alert("Please log in as an admin to add profiles.");
+                }
+            });
+            
+            $('#profile-nav-container').addEventListener('click', async e => {
+                if (!e.target.classList.contains('select-profile-btn')) return;
+                const profileId = e.target.dataset.id;
+                const profile = allProfiles.find(p => p.id === profileId);
+                if (!profile || profile.id === activeProfile?.id) return;
+                
+                if (isAdminLoggedIn) {
+                    setActiveProfile(profile);
+                } else {
+                    profileToUnlockId = profileId;
+                    $('#profile-password-title').textContent = `Unlock ${profile.name}'s Profile`;
+                    toggleModal('profile-password-modal', true);
+                }
+            });
+            
+            const setupAdminAction = (buttonId, task) => {
+                 $(buttonId).addEventListener('click', () => {
+                    if (isAdminLoggedIn) {
+                        task();
+                    } else {
+                        alert("This action requires admin privileges.");
+                    }
+                });
+            };
+
+            setupAdminAction('#edit-active-profile-btn', () => {
+                if(!activeProfile) return;
+                const profile = activeProfile;
+                $('#profile-id').value = profile.id;
+                $('#name').value = profile.name;
+                $('#employeeId').value = profile.employeeId;
+                $('#department').value = profile.department;
+                $('#position').value = profile.position;
+                $('#profile-password-input').value = '';
+                $('#profile-password-input').placeholder = 'Leave blank to keep unchanged';
+                $('#profile-form-title').textContent = 'Edit Profile';
+                toggleModal('profile-form-modal', true);
+            });
+
+            setupAdminAction('#delete-active-profile-btn', () => {
+                if(activeProfile) handleDeleteProfile(activeProfile.id);
+            });
+            
+            setupAdminAction('#change-employee-password-btn', () => {
+                if(!activeProfile) return;
+                $('#change-employee-password-title').textContent = `Change Password for ${activeProfile.name}`;
+                toggleModal('change-employee-password-modal', true);
+            });
+
+            $('#admin-login-form').addEventListener('submit', e => {
+                e.preventDefault();
+                const email = $('#admin-email').value;
+                const password = $('#admin-password').value;
+                const errorEl = $('#admin-login-error');
+                signInWithEmailAndPassword(auth, email, password)
+                    .then(() => {
+                        toggleModal('admin-login-modal', false);
+                        errorEl.classList.add('hidden');
+                    })
+                    .catch(error => {
+                        errorEl.textContent = error.message;
+                        errorEl.classList.remove('hidden');
+                    });
+            });
+
+            $('#profile-password-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const password = $('#profile-password-check').value;
+                const profile = allProfiles.find(p => p.id === profileToUnlockId);
+                if (profile && password === profile.password) {
+                    setActiveProfile(profile);
+                    toggleModal('profile-password-modal', false);
+                    $('#profile-password-check').value = '';
+                    $('#profile-password-error').classList.add('hidden');
+                } else {
+                    $('#profile-password-error').classList.remove('hidden');
+                }
+            });
+            
+            $('#change-employee-password-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newPassword = $('#new-employee-password').value;
+                if(!newPassword) return alert("Password cannot be empty.");
+                if(activeProfile) {
+                    const profileRef = doc(db, `artifacts/${appId}/users/${dataUserId}/profiles`, activeProfile.id);
+                    await setDoc(profileRef, { password: newPassword }, { merge: true });
+                    alert(`Password for ${activeProfile.name} updated successfully.`);
+                    toggleModal('change-employee-password-modal', false);
+                }
+            });
+
+            $$('.close-modal-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                e.target.closest('.fixed.inset-0').classList.add('hidden');
+            }));
+
+            $('#profile-form').addEventListener('submit', handleSaveProfile);
+            $('#mark-attendance-btn').addEventListener('click', handleMarkAttendance);
+            $('#request-leave-btn').addEventListener('click', () => toggleModal('leave-request-modal', true));
+            $('#leave-request-form').addEventListener('submit', handleLeaveRequest);
+            $('#add-link-btn').addEventListener('click', addLinkInput);
+            $('#work-links-container').addEventListener('click', e => {
+                if (e.target.classList.contains('remove-link-btn')) {
+                    e.target.parentElement.remove();
+                    checkCanMarkAttendance();
+                }
+            });
+            $('#download-sheet-btn').addEventListener('click', downloadCSV);
+
+            main();
+        });
+    </script>
+</body>
+</html>
